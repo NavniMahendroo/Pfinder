@@ -1,0 +1,68 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: Build API image
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-api:${SHORT_SHA}
+      - ./apps/api
+
+  - name: gcr.io/cloud-builders/docker
+    id: Build Worker image
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-worker:${SHORT_SHA}
+      - ./apps/worker
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push API image
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-api:${SHORT_SHA}
+
+  - name: gcr.io/cloud-builders/docker
+    id: Push Worker image
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-worker:${SHORT_SHA}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: Deploy API
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - sra-api
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-api:${SHORT_SHA}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --set-env-vars
+      - APP_ENV=production
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: Deploy Worker
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - sra-worker
+      - --image
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-worker:${SHORT_SHA}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --no-allow-unauthenticated
+
+substitutions:
+  _REGION: asia-south1
+  _REPO: sra-artifacts
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-api:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/sra-worker:${SHORT_SHA}

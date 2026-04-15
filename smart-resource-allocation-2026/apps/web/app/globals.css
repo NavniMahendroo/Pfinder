@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-start: #fffaf0;
+  --bg-end: #e0f2fe;
+  --card: rgba(255, 255, 255, 0.5);
+  --stroke: rgba(255, 255, 255, 0.6);
+  --text: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Poppins', sans-serif;
+  color: var(--text);
+  background: linear-gradient(140deg, var(--bg-start), var(--bg-end));
+  background-attachment: fixed;
+}
+
+.glass {
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(18px);
+}
+
+@keyframes float-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-float-up {
+  animation: float-up 650ms ease both;
+}
+
+.landing-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(10px);
+  opacity: 0.55;
+  animation: drift 10s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.orb-1 {
+  height: 280px;
+  width: 280px;
+  top: -90px;
+  left: -80px;
+  background: radial-gradient(circle at 30% 30%, #fde68a, #f59e0b);
+}
+
+.orb-2 {
+  height: 340px;
+  width: 340px;
+  right: -110px;
+  top: 10%;
+  background: radial-gradient(circle at 40% 40%, #7dd3fc, #0284c7);
+  animation-delay: 700ms;
+}
+
+.orb-3 {
+  height: 320px;
+  width: 320px;
+  bottom: -130px;
+  left: 35%;
+  background: radial-gradient(circle at 50% 50%, #fdba74, #fb7185);
+  animation-delay: 1300ms;
+}
+
+.auth-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px);
+}
+
+@keyframes drift {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-14px) translateX(10px) scale(1.04);
+  }
+}
