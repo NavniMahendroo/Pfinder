@@ -42,6 +42,8 @@ class ManualTaskCreateRequest(BaseModel):
     location_context: str
     required_hours: float = Field(default=2.0, ge=0.5, le=24)
     required_skills: list[str] = Field(default_factory=list)
+    volunteer_start_date: str
+    volunteer_end_date: str
     notes: str | None = None
 
 
@@ -56,6 +58,8 @@ class TaskListItem(BaseModel):
     status: str
     required_hours: float
     required_skills: list[str]
+    volunteer_start_date: str | None = None
+    volunteer_end_date: str | None = None
     created_at: str
     matched_volunteer_id: str | None = None
     matched_volunteer_name: str | None = None
@@ -65,6 +69,8 @@ class TaskListItem(BaseModel):
 class CompletionProof(BaseModel):
     volunteer_id: str
     volunteer_name: str
+    task_id: str | None = None
+    task_summary: str | None = None
     hours_done: float
     proof_text: str
     proof_url: str | None = None
@@ -84,6 +90,29 @@ class VolunteerActiveInfo(BaseModel):
     is_available: bool
     current_task_id: str | None = None
     current_task_summary: str | None = None
+
+
+class NgoVolunteerDetails(BaseModel):
+    volunteer_id: str
+    volunteer_name: str
+    email: str | None = None
+    location_text: str | None = None
+    location_lat: float | None = None
+    location_lng: float | None = None
+    skills: list[str]
+    preferred_categories: list[str]
+    is_available: bool
+    reliability_score: int
+    points_total: int
+    completed_tasks: int
+    total_hours: float
+    on_site_rate: float
+    current_task_id: str | None = None
+    current_task_summary: str | None = None
+
+
+class NgoVolunteersResponse(BaseModel):
+    volunteers: list[NgoVolunteerDetails]
 
 
 class NgoDashboardResponse(BaseModel):

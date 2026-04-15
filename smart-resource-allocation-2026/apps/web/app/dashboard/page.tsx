@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, Users } from "lucide-react";
 
@@ -16,6 +17,8 @@ type TaskListItem = {
   status: string;
   required_hours: number;
   required_skills: string[];
+  volunteer_start_date?: string | null;
+  volunteer_end_date?: string | null;
   matched_volunteer_name?: string | null;
 };
 
@@ -57,6 +60,8 @@ export default function DashboardPage() {
     location_context: "",
     required_hours: 2,
     required_skills: "First Aid, Logistics",
+    volunteer_start_date: new Date().toISOString().slice(0, 10),
+    volunteer_end_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     notes: "",
   });
 
@@ -83,6 +88,14 @@ export default function DashboardPage() {
   }, [ngoId]);
 
   const proofCount = useMemo(() => data?.completion_proofs.length ?? 0, [data]);
+  const impactMetrics = useMemo(() => {
+    const proofs = data?.completion_proofs ?? [];
+    const active = data?.active_tasks ?? [];
+    const onSiteRate = proofs.length ? (proofs.filter((proof) => proof.was_on_site).length / proofs.length) * 100 : 0;
+    const avgUrgency = active.length ? active.reduce((sum, task) => sum + task.urgency_score, 0) / active.length : 0;
+    const readinessIndex = Math.min(100, Math.round((onSiteRate * 0.55) + (avgUrgency * 9) + Math.min(15, active.length * 2)));
+    return { onSiteRate, readinessIndex, avgUrgency };
+  }, [data]);
 
   async function onCreateTask(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -99,6 +112,8 @@ export default function DashboardPage() {
         urgency_score: Number(form.urgency_score),
         location_context: form.location_context,
         required_hours: Number(form.required_hours),
+        volunteer_start_date: form.volunteer_start_date,
+        volunteer_end_date: form.volunteer_end_date,
         required_skills: form.required_skills
           .split(",")
           .map((item) => item.trim())
@@ -196,6 +211,29 @@ export default function DashboardPage() {
                 placeholder="Skills (comma separated)"
               />
             </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Volunteers needed from</label>
+                <input
+                  required
+                  type="date"
+                  value={form.volunteer_start_date}
+                  onChange={(event) => setForm((prev) => ({ ...prev, volunteer_start_date: event.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Volunteers needed until</label>
+                <input
+                  required
+                  type="date"
+                  value={form.volunteer_end_date}
+                  min={form.volunteer_start_date}
+                  onChange={(event) => setForm((prev) => ({ ...prev, volunteer_end_date: event.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2"
+                />
+              </div>
+            </div>
             <textarea
               value={form.notes}
               onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
@@ -213,6 +251,35 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="col-span-1 md:col-span-7">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Volunteer Intelligence Hub</h2>
+              <p className="mt-1 text-sm text-slate-600">Open full volunteer profiles, trust scores, and current assignments.</p>
+            </div>
+            <Link
+              href="/dashboard/volunteers"
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+            >
+              View Volunteers Page
+            </Link>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-sky-200 bg-sky-100/70 p-3">
+              <p className="text-xs uppercase tracking-wider text-sky-800">Impact Readiness Index</p>
+              <p className="mt-1 text-2xl font-bold text-sky-900">{impactMetrics.readinessIndex}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-100/70 p-3">
+              <p className="text-xs uppercase tracking-wider text-emerald-800">On-Site Verification Rate</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-900">{impactMetrics.onSiteRate.toFixed(1)}%</p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-100/70 p-3">
+              <p className="text-xs uppercase tracking-wider text-amber-800">Avg Active Task Urgency</p>
+              <p className="mt-1 text-2xl font-bold text-amber-900">{impactMetrics.avgUrgency.toFixed(1)}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="col-span-1 md:col-span-7">
           <h2 className="text-lg font-semibold text-slate-900">Active Tasks</h2>
           <div className="mt-4 space-y-3">
             {(data?.active_tasks ?? []).map((task) => (
@@ -226,6 +293,9 @@ export default function DashboardPage() {
                 </div>
                 <p className="mt-2 text-xs text-slate-600">
                   {task.category} • {task.required_hours}h • Assigned to {task.matched_volunteer_name || "Unassigned"}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Volunteer window: {task.volunteer_start_date || "-"} to {task.volunteer_end_date || "-"}
                 </p>
               </div>
             ))}

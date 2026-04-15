@@ -112,6 +112,9 @@ export default function VolunteerSettingsPage() {
               <Link href="/volunteer/active" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Active Tasks
               </Link>
+              <Link href="/volunteer/completed" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                Completed Tasks
+              </Link>
             </div>
           </div>
           {error && <p className="mt-3 rounded-xl bg-rose-100 px-3 py-2 text-sm font-medium text-rose-700">{error}</p>}

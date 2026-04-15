@@ -80,7 +80,6 @@ export default function VolunteerActivePage() {
     setActiveTasks(
       taskResponse.tasks.filter(
         (task) =>
-          task.matched_volunteer_id === currentVolunteerId &&
           (task.status === "accepted" || task.status === "in_progress")
       )
     );
@@ -143,6 +142,9 @@ export default function VolunteerActivePage() {
             <div className="flex flex-wrap gap-2">
               <Link href="/volunteer" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 New Offers
+              </Link>
+              <Link href="/volunteer/completed" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                Completed Tasks
               </Link>
               <Link href="/volunteer/settings" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Settings

@@ -13,6 +13,8 @@ from app.api.v1.schemas import (
     IntakeResponse,
     ManualTaskCreateRequest,
     NgoDashboardResponse,
+    NgoVolunteerDetails,
+    NgoVolunteersResponse,
     TaskListItem,
     VolunteerAcceptRequest,
     VolunteerActiveInfo,
@@ -56,7 +58,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _points_for_completion(urgency: int, hours_done: float, was_on_site: bool) -> int:
-    return int((hours_done * 10) + (urgency * 5) + (20 if was_on_site else 0))
+    return 20
 
 
 def _ensure_user(db: Session, user_id: str, role: UserRole, name: str, email: str | None = None) -> User:
@@ -92,6 +94,7 @@ def _task_required_skills(task: Task) -> list[str]:
 
 
 def _task_to_list_item(task: Task, matched_volunteer_name: str | None = None, distance_km: float | None = None) -> TaskListItem:
+    payload = task.structured_payload or {}
     return TaskListItem(
         task_id=task.id,
         summary=task.summary,
@@ -103,6 +106,8 @@ def _task_to_list_item(task: Task, matched_volunteer_name: str | None = None, di
         status=task.status.value,
         required_hours=_task_required_hours(task),
         required_skills=_task_required_skills(task),
+        volunteer_start_date=payload.get("volunteer_start_date"),
+        volunteer_end_date=payload.get("volunteer_end_date"),
         created_at=task.created_at.isoformat() if task.created_at else datetime.now(timezone.utc).isoformat(),
         matched_volunteer_id=task.matched_volunteer_id,
         matched_volunteer_name=matched_volunteer_name,
@@ -112,7 +117,8 @@ def _task_to_list_item(task: Task, matched_volunteer_name: str | None = None, di
 
 def _volunteer_history_internal(db: Session, volunteer_id: str) -> VolunteerHistoryResponse:
     normalized_id = _stable_uuid(volunteer_id)
-    completed_rows = db.scalars(select(Task).where(Task.status == TaskStatus.COMPLETED)).all()
+    # Read completion logs from payloads directly to avoid enum filter mismatches.
+    completed_rows = db.scalars(select(Task).order_by(Task.created_at.desc())).all()
 
     proofs: list[CompletionProof] = []
     total_points = 0
@@ -128,6 +134,8 @@ def _volunteer_history_internal(db: Session, volunteer_id: str) -> VolunteerHist
             proof = CompletionProof(
                 volunteer_id=entry.get("volunteer_id"),
                 volunteer_name=entry.get("volunteer_name", "Volunteer"),
+                task_id=task.id,
+                task_summary=task.summary,
                 hours_done=float(entry.get("hours_done", 0)),
                 proof_text=entry.get("proof_text", ""),
                 proof_url=entry.get("proof_url"),
@@ -238,6 +246,15 @@ async def create_task_intake(
 async def create_manual_task(payload: ManualTaskCreateRequest, db: Session = Depends(get_db)):
     ngo = _ensure_user(db, payload.ngo_id, UserRole.NGO, payload.ngo_name)
 
+    try:
+        start_date = datetime.fromisoformat(payload.volunteer_start_date)
+        end_date = datetime.fromisoformat(payload.volunteer_end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Dates must be valid ISO format") from exc
+
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="Volunteer end date must be on or after start date")
+
     lat, lng = await geocode_location(payload.location_context)
     task = Task(
         id=str(uuid4()),
@@ -252,6 +269,8 @@ async def create_manual_task(payload: ManualTaskCreateRequest, db: Session = Dep
         structured_payload={
             "required_hours": payload.required_hours,
             "required_skills": payload.required_skills,
+            "volunteer_start_date": payload.volunteer_start_date,
+            "volunteer_end_date": payload.volunteer_end_date,
             "notes": payload.notes,
             "completions": [],
         },
@@ -295,6 +314,8 @@ def ngo_dashboard(ngo_id: str = Query(...), db: Session = Depends(get_db)):
                 CompletionProof(
                     volunteer_id=entry.get("volunteer_id"),
                     volunteer_name=entry.get("volunteer_name", "Volunteer"),
+                    task_id=task.id,
+                    task_summary=task.summary,
                     hours_done=float(entry.get("hours_done", 0)),
                     proof_text=entry.get("proof_text", ""),
                     proof_url=entry.get("proof_url"),
@@ -338,6 +359,69 @@ def ngo_dashboard(ngo_id: str = Query(...), db: Session = Depends(get_db)):
         active_volunteers=active_volunteers,
         completion_proofs=completion_proofs,
     )
+
+
+@router.get("/ngo-volunteers", response_model=NgoVolunteersResponse)
+def ngo_volunteers(ngo_id: str = Query(...), db: Session = Depends(get_db)):
+    ngo = db.get(User, _stable_uuid(ngo_id))
+    if ngo is None:
+        raise HTTPException(status_code=404, detail="NGO user not found")
+
+    ngo_tasks = db.scalars(select(Task).where(Task.created_by == ngo.id)).all()
+    volunteers = db.scalars(select(User).where(User.role == UserRole.VOLUNTEER)).all()
+
+    current_task_by_volunteer: dict[str, Task] = {}
+    for task in ngo_tasks:
+        if task.matched_volunteer_id and task.status in {TaskStatus.ACCEPTED, TaskStatus.IN_PROGRESS}:
+            current_task_by_volunteer[task.matched_volunteer_id] = task
+
+    stats: dict[str, dict[str, float | int]] = {}
+    for task in ngo_tasks:
+        for completion in (task.structured_payload or {}).get("completions", []):
+            volunteer_id = completion.get("volunteer_id")
+            if not volunteer_id:
+                continue
+            bucket = stats.setdefault(
+                volunteer_id,
+                {"points": 0, "completed": 0, "hours": 0.0, "on_site": 0},
+            )
+            bucket["points"] += int(completion.get("points_awarded", 0))
+            bucket["completed"] += 1
+            bucket["hours"] += float(completion.get("hours_done", 0))
+            bucket["on_site"] += 1 if completion.get("was_on_site", False) else 0
+
+    results: list[NgoVolunteerDetails] = []
+    for volunteer in volunteers:
+        bucket = stats.get(volunteer.id, {"points": 0, "completed": 0, "hours": 0.0, "on_site": 0})
+        completed = int(bucket["completed"])
+        on_site = int(bucket["on_site"])
+        on_site_rate = (on_site / completed) if completed else 0.0
+        reliability_score = min(100, int((on_site_rate * 65) + min(35, completed * 5)))
+        current_task = current_task_by_volunteer.get(volunteer.id)
+
+        results.append(
+            NgoVolunteerDetails(
+                volunteer_id=volunteer.id,
+                volunteer_name=volunteer.name,
+                email=volunteer.email,
+                location_text=volunteer.location_text,
+                location_lat=volunteer.location_lat,
+                location_lng=volunteer.location_lng,
+                skills=volunteer.skills or [],
+                preferred_categories=volunteer.interests or [],
+                is_available=bool((volunteer.availability or {}).get("is_available", True)),
+                reliability_score=reliability_score,
+                points_total=int(bucket["points"]),
+                completed_tasks=completed,
+                total_hours=round(float(bucket["hours"]), 2),
+                on_site_rate=round(on_site_rate * 100, 1),
+                current_task_id=current_task.id if current_task else None,
+                current_task_summary=current_task.summary if current_task else None,
+            )
+        )
+
+    results.sort(key=lambda item: (-item.reliability_score, -item.points_total, item.volunteer_name.lower()))
+    return NgoVolunteersResponse(volunteers=results)
 
 
 @router.get("/volunteer/active", response_model=VolunteerTaskListResponse)
@@ -410,6 +494,8 @@ def volunteer_complete_task(payload: VolunteerCompleteRequest, db: Session = Dep
     completion_entry: dict[str, Any] = {
         "volunteer_id": volunteer.id,
         "volunteer_name": volunteer.name,
+        "task_id": task.id,
+        "task_summary": task.summary,
         "hours_done": payload.hours_done,
         "proof_text": payload.proof_text,
         "proof_url": payload.proof_url,
@@ -421,8 +507,8 @@ def volunteer_complete_task(payload: VolunteerCompleteRequest, db: Session = Dep
         "completed_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    payload_json = task.structured_payload or {}
-    completions = payload_json.get("completions", [])
+    payload_json = dict(task.structured_payload or {})
+    completions = list(payload_json.get("completions", []))
     completions.append(completion_entry)
     payload_json["completions"] = completions
     task.structured_payload = payload_json
@@ -434,6 +520,8 @@ def volunteer_complete_task(payload: VolunteerCompleteRequest, db: Session = Dep
     return CompletionProof(
         volunteer_id=completion_entry["volunteer_id"],
         volunteer_name=completion_entry["volunteer_name"],
+        task_id=task.id,
+        task_summary=task.summary,
         hours_done=float(completion_entry["hours_done"]),
         proof_text=completion_entry["proof_text"],
         proof_url=completion_entry["proof_url"],

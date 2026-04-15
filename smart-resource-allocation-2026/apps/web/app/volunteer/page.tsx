@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, LocateFixed, Siren, UserCheck } from "lucide-react";
 
@@ -21,6 +22,8 @@ type VolunteerTask = {
   distance_km?: number | null;
   required_hours: number;
   required_skills: string[];
+  volunteer_start_date?: string | null;
+  volunteer_end_date?: string | null;
 };
 
 type TaskListResponse = {
@@ -34,7 +37,16 @@ function urgencyBadgeClass(urgencyScore: number): string {
   return "bg-emerald-100 text-emerald-800 border-emerald-200";
 }
 
+function isInVolunteerWindow(task: VolunteerTask): boolean {
+  if (!task.volunteer_start_date || !task.volunteer_end_date) return true;
+  const now = new Date();
+  const start = new Date(`${task.volunteer_start_date}T00:00:00`);
+  const end = new Date(`${task.volunteer_end_date}T23:59:59`);
+  return now >= start && now <= end;
+}
+
 export default function VolunteerPage() {
+  const router = useRouter();
   const [volunteerId, setVolunteerId] = useState("");
   const [volunteerName, setVolunteerName] = useState("Volunteer");
   const [tasks, setTasks] = useState<VolunteerTask[]>([]);
@@ -76,7 +88,8 @@ export default function VolunteerPage() {
     setLoading(true);
     apiGet<TaskListResponse>(`/api/tasks/volunteer/active?${query.toString()}`)
       .then((response) => {
-        setTasks(response.tasks);
+        const onlyNewOffers = response.tasks.filter((task) => task.status === "matching" || task.status === "dispatched");
+        setTasks(onlyNewOffers);
         setPoints(response.points_total);
       })
       .catch((requestError) => {
@@ -98,6 +111,10 @@ export default function VolunteerPage() {
 
     const target = tasks.find((task) => task.task_id === taskId);
     if (!target) return;
+    if (!isInVolunteerWindow(target)) {
+      setError("This task is outside the volunteer date window set by the NGO.");
+      return;
+    }
 
     apiPost<{ ok: boolean }>("/api/tasks/volunteer/accept", {
       volunteer_id: volunteerId,
@@ -108,6 +125,7 @@ export default function VolunteerPage() {
         setAcceptedTaskIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]));
         setTasks((prev) => prev.filter((task) => task.task_id !== taskId));
         setDistanceMessage(`Accepted ${target.summary}. Open Active Tasks to complete and upload proof.`);
+        router.push("/volunteer/active");
       })
       .catch((requestError) => {
         const message = requestError instanceof Error ? requestError.message : "Failed to accept task";
@@ -145,6 +163,9 @@ export default function VolunteerPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Link href="/volunteer/active" className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
                 Active Tasks
+              </Link>
+              <Link href="/volunteer/completed" className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                Completed Tasks
               </Link>
               <Link href="/volunteer/settings" className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
                 Settings
@@ -212,6 +233,9 @@ export default function VolunteerPage() {
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-slate-600">{task.category} • {task.required_hours}h • Skills: {task.required_skills.join(", ") || "General"}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Volunteers needed: {task.volunteer_start_date || "-"} to {task.volunteer_end_date || "-"}
+                  </p>
                 </div>
                 <p className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">{task.task_id.slice(0, 8)}</p>
               </div>
@@ -236,9 +260,10 @@ export default function VolunteerPage() {
                 <button
                   type="button"
                   onClick={() => acceptTask(task.task_id)}
+                  disabled={!isInVolunteerWindow(task)}
                   className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
                 >
-                  Accept Task
+                  {isInVolunteerWindow(task) ? "Accept Task" : "Outside Date Window"}
                 </button>
                 <button
                   type="button"
