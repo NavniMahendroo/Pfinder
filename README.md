@@ -1,6 +1,6 @@
 # Smart Resource Allocation (SRA)
 
-AI-powered emergency coordination platform for NGOs and volunteers, built for Google Solution Challenge 2026.
+AI-powered emergency coordination platform for NGOs and volunteers.
 
 ## Elevator Pitch
 When a crisis hits, help requests are fragmented, response windows are short, and volunteer coordination is mostly manual. SRA converts messy input (voice, paper, notes) into structured, geo-aware tasks and routes them to the right volunteers fast, with traceable completion proof and impact metrics.
